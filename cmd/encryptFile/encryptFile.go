@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -33,7 +34,7 @@ func encrypt() {
 		return
 	}
 	if "" == *outfile {
-		*outfile = *infile + ".enc"
+		*outfile = filepath.Base(*infile) + ".enc"
 	}
 	if "" == *outkeyfile {
 		*outkeyfile = *infile + ".key.enc"
