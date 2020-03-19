@@ -4,12 +4,16 @@ import (
 	"archive/zip"
 	"io"
 	"os"
+
+	"github.com/astaxie/beego/logs"
 )
 
 // ZipFiles compresses one or many files into a single zip archive file.
 // Param 1: filename is the output zip file's name.
 // Param 2: files is a list of files to add to the zip.
 func ZipFiles(filename string, files []string) error {
+	logs.Info("---------- ZipFiles START ----------")
+	defer logs.Info("---------- ZipFiles END ----------")
 
 	newZipFile, err := os.Create(filename)
 	if err != nil {

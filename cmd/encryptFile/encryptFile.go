@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"time"
 
+	"github.com/astaxie/beego/logs"
 	"github.com/sunlianqiang/go-large-file-encrypt/pkg/compress"
 	"github.com/sunlianqiang/go-large-file-encrypt/pkg/rsacrypt"
 	"github.com/sunlianqiang/go-large-file-encrypt/pkg/s3"
@@ -17,44 +19,65 @@ import (
 
 // Command-line flags
 var (
-	mode       = flag.String("mode", "encrypt", "Encrypt file using public key; or decrypt using private key")
-	privateKey = flag.String("privatekey", "~/.ssh/id_rsa", "Path to RSA private key for decryption")
-	pubKey     = flag.String("pubkey", "~/.ssh/id_rsa.pub", "Path to RSA public key for decryption")
-	infile     = flag.String("in", "", "Path to input file")
-	outfile    = flag.String("out", "", "Path to output file")
-	outkeyfile = flag.String("outkey", "", "Path to random AES key")
-	s3Bucket   = flag.String("s3_bucket", "agora-finace-backup-test", "aws s3 bucket")
-	s3Region   = flag.String("s3_region", "cn-north-1", "aws s3 region")
-	// add option to sign the file
+	mode    = flag.String("mode", "encrypt", "Encrypt file using public key; or decrypt using private key")
+	infile  = flag.String("in", "", "Path to input file")
+	outfile = flag.String("out", "", "Path to output file")
+
+	// encrypt
+	outkeyfile = flag.String("outkey", "", "Option. Path to random AES key")
+	pubKey     = flag.String("pubkey", "~/.ssh/id_rsa.pub", "Required. Path to RSA public key for decryption")
+	s3Bucket   = flag.String("s3_bucket", "agora-finace-backup-test", "Required. aws s3 bucket")
+	s3Region   = flag.String("s3_region", "cn-north-1", "Required. aws s3 region")
+
+	// decrypt
+	privateKey = flag.String("privatekey", "~/.ssh/id_rsa", "Required. Path to RSA private key for decryption")
+	aesKeyfile = flag.String("aeskey", "", "AES key encrypted by RSA public key. default is [infile].aeskey-0.enc")
 )
+
+func clean(files []string) {
+	for _, v := range files {
+		err := os.Remove(v)
+
+		if err != nil {
+			logs.Debug("remove file:%v, err:%v\n", v, err)
+			return
+		}
+		logs.Debug("File:%v successfully deleted\n", v)
+	}
+}
 
 func encrypt() {
 	if *infile == "" || *pubKey == "" {
 		flag.PrintDefaults()
 		return
 	}
+	infileName := filepath.Base(*infile)
+
+	// 源文件AES加密后文件
 	if "" == *outfile {
-		*outfile = filepath.Base(*infile) + ".enc"
+		*outfile = infileName + ".enc"
 	}
+	// AES加密后文件
 	if "" == *outkeyfile {
-		*outkeyfile = *infile + ".key.enc"
+		*outkeyfile = infileName + ".key.enc"
 	}
-	fmt.Printf("Encrypting file:%v, outfile:%v, out aes key file:%v\n", *infile, *outfile, *outkeyfile)
+	logs.Debug("Encrypting file:%v, outfile:%v, out aes key file:%v\n", *infile, *outfile, *outkeyfile)
 
 	// read in public key
 	// *pubKey = "../../pkg/rsacrypt_test/id_rsa_test.pub"
-	keybytes, err := ioutil.ReadFile(*pubKey)
+	keyStrMap, err := rsacrypt.GetPublickKeys(*pubKey)
 	if err != nil {
 		log.Println("Unable to read public key file. ", err)
 	}
 
 	// encrypt
 	timeLast := time.Now()
-	if err = rsacrypt.Encrypt(keybytes, *infile, *outfile, *outkeyfile); err != nil {
-		log.Fatalf("Encrypt error : %s", err)
+	var outkeyFileArr []string
+	if err = rsacrypt.Encrypt(&keyStrMap, *infile, *outfile, &outkeyFileArr); err != nil {
+		log.Fatalf(": %s", err)
 		return
 	}
-	fmt.Printf("use time:%v, encrypt \n", time.Since(timeLast))
+	logs.Debug("use time:%v, encrypt \n", time.Since(timeLast))
 	timeLast = time.Now()
 	// get sha256 of original file
 	hashFile, err := sha.CreateSha256File(*infile)
@@ -64,23 +87,33 @@ func encrypt() {
 	}
 
 	// package encrypted file, encrypted AES key file, sha256 file
-	files := []string{*outfile, *outkeyfile, hashFile}
-	zipFile := *outfile + "." + time.Now().Local().Format(time.RFC3339) + ".zip"
+
+	files := []string{*outfile, hashFile}
+	files = append(files, outkeyFileArr...)
+	zipFile := infileName + "." + time.Now().Local().Format(time.RFC3339) + ".zip"
 
 	if err := compress.ZipFiles(zipFile, files); err != nil {
 		panic(err)
 		return
 	}
-	fmt.Printf("use time:%v, Zipped File:%v, \n", time.Since(timeLast), zipFile)
+	logs.Debug("use time:%v, Zipped File:%v, \n", time.Since(timeLast), zipFile)
 	timeLast = time.Now()
 
 	// upload to s3
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	// S3_REGION := "cn-north-1"
 	// S3_BUCKET := "agora-finace-backup-test"
-	fmt.Printf("aws s3 region:%v, bucket:%v, upload zip file:%v\n", *s3Region, *s3Bucket, zipFile)
-	s3.UploadMultipart(*s3Region, *s3Bucket, zipFile)
-	fmt.Printf("use time:%v, upload \n", time.Since(timeLast))
+	logs.Debug("aws s3 region:%v, bucket:%v, upload zip file:%v\n", *s3Region, *s3Bucket, zipFile)
+	if err := s3.UploadMultipart(*s3Region, *s3Bucket, zipFile); err != nil {
+		errStr := fmt.Sprintf("Fail to upload file:%v to s3, region:%v, bucket:%v, err:%v", *&zipFile, *s3Region, *s3Bucket, err)
+		fmt.Errorf(errStr)
+		return
+	}
+	logs.Debug("use time:%v, upload file:%v to s3, region:%v, bucket:%v", time.Since(timeLast), *&zipFile, *s3Region, *s3Bucket)
+
+	logs.Debug("start clean temp files\n")
+	files = append(files, zipFile)
+	clean(files)
 }
 
 func decrypt() {
@@ -89,6 +122,9 @@ func decrypt() {
 		return
 	}
 
+	if "" == *aesKeyfile {
+		*aesKeyfile = *infile + ".aeskey-0.enc"
+	}
 	// read in private key
 	// privateKey = "../../pkg/rsacrypt_test/id_rsa_test"
 	keybytes, err := ioutil.ReadFile(*privateKey)
@@ -100,8 +136,9 @@ func decrypt() {
 		*outfile = *infile + ".dec"
 	}
 	// decrypt
-	aesKeyfile := (*infile)[0:len(*infile)-4] + ".key.enc"
-	if err := rsacrypt.Decrypt(keybytes, *infile, aesKeyfile, *outfile); err != nil {
+	// aesKeyfile := (*infile)[0:len(*infile)-4] + ".key.enc"
+
+	if err := rsacrypt.Decrypt(keybytes, *infile, *aesKeyfile, *outfile); err != nil {
 		log.Fatalf("Decrypt error : %s", err)
 	}
 	log.Println("Decryption ..done")
