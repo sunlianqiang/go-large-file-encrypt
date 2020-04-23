@@ -16,3 +16,12 @@
 
 # test
 cmd/encryptFile/test.sh
+pkg/rsacrypt_test/id_rsa_test
+pkg/rsacrypt_test/id_rsa_test.pub
+cmd/encryptFile/test/
+pkg/compress/test/
+test/
+kingdee-backup-script
+
+# bin
+cmd/encryptFile/encryptFile

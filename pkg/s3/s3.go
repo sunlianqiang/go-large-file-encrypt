@@ -6,14 +6,19 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
+	"github.com/astaxie/beego/logs"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-func UploadMultipart(s3Region, s3Bucket, uploadFile, s3Key string) (err error) {
+func UploadMultipart(s3Region, s3Bucket, uploadFile string) (err error) {
+	logs.Info("---------- UploadMultipart START ----------")
+	defer logs.Info("---------- UploadMultipart END ----------")
+
 	// The session the S3 Uploader will use
 	credentialsChainVerboseErrors := true
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
@@ -35,17 +40,21 @@ func UploadMultipart(s3Region, s3Bucket, uploadFile, s3Key string) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to open file %q, %v", uploadFile, err)
 	}
+	defer f.Close()
 
 	// Upload the file to S3.
+	s3Key := filepath.Base(uploadFile)
 	result, err := uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(s3Bucket),
-		Key:    aws.String(uploadFile),
+		Key:    aws.String(s3Key),
 		Body:   f,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to upload file, %v", err)
+		err = fmt.Errorf("failed to upload file, %v", err)
+		logs.Error(err.Error())
+		return
 	}
-	fmt.Printf("file uploaded to, %s\n", aws.StringValue(&result.Location))
+	logs.Debug("file uploaded to, %s\n", aws.StringValue(&result.Location))
 	return
 }
 

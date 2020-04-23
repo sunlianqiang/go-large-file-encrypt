@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/astaxie/beego/logs"
 	"github.com/sunlianqiang/go-large-file-encrypt/pkg/randomStr"
 )
 
@@ -20,13 +21,9 @@ type AesKey struct {
 
 // CreateKey
 // create random AES key
-func CreateKey() (key *AesKey) {
+func CreateRandomKey() (key *AesKey) {
 	newkey := []byte(randomStr.GetRandomStr(32))
-	// err := ioutil.WriteFile("aeskey", newkey, 0644)
-	// if err != nil {
-	// 	fmt.Printf("Error creating Key file!")
-	// 	os.Exit(0)
-	// }
+
 	aesKey := AesKey{newkey}
 	return &aesKey
 }
@@ -34,7 +31,7 @@ func CreateKey() (key *AesKey) {
 func GetKey(file string) (key *AesKey) {
 	thekey, err := ioutil.ReadFile(file) //Check to see if a key was already created
 	if err != nil {
-		key = CreateKey() //If not, create one
+		key = CreateRandomKey() //If not, create one
 	} else {
 		key = &AesKey{thekey} //If so, set key as the key found in the file
 	}
@@ -45,31 +42,37 @@ func GetKey(file string) (key *AesKey) {
 func (key *AesKey) EncryptFile(inputfile string, outputfile string) {
 	b, err := ioutil.ReadFile(inputfile) //Read the target file
 	if err != nil {
-		fmt.Printf("Unable to open the input file!\n")
+		logs.Debug("Unable to open the input file!\n")
 		os.Exit(0)
 	}
 	ciphertext := key.encrypt(b)
-	//fmt.Printf("%x\n", ciphertext)
+	//logs.Debug("%x\n", ciphertext)
 	err = ioutil.WriteFile(outputfile, ciphertext, 0644)
 	if err != nil {
-		fmt.Printf("Unable to create encrypted file!\n")
+		logs.Debug("Unable to create encrypted file!\n")
 		os.Exit(0)
 	}
 }
 
-func (key *AesKey) DecryptFile(inputfile string, decryptedFile string) {
+func (key *AesKey) DecryptFile(inputfile string, decryptedFile string) (err error) {
 	if "" == decryptedFile {
-		fmt.Printf("decryptedFile can't be empty!")
+		logs.Debug("decryptedFile can't be empty!")
 	}
 	z, err := ioutil.ReadFile(inputfile)
+	if err != nil {
+		err = fmt.Errorf("Unable to Read decrypted file:%v!, err:%v\n", inputfile, err)
+		logs.Error(err.Error())
+		return
+	}
 	result := key.decrypt(z)
-	//fmt.Printf("Decrypted: %s\n", result)
-	fmt.Printf("Decrypted file:%v was created with file permissions 0777\n", decryptedFile)
+	//logs.Debug("Decrypted: %s\n", result)
+	logs.Debug("Decrypted file:%v was created with file permissions 0777\n", decryptedFile)
 	err = ioutil.WriteFile(decryptedFile, result, 0777)
 	if err != nil {
-		fmt.Printf("Unable to create decrypted file!, err:%v\n", err)
+		logs.Debug("Unable to create decrypted file!, err:%v\n", err)
 		os.Exit(0)
 	}
+	return
 }
 
 func encodeBase64(b []byte) []byte {
@@ -79,7 +82,7 @@ func encodeBase64(b []byte) []byte {
 func decodeBase64(b []byte) []byte {
 	data, err := base64.StdEncoding.DecodeString(string(b))
 	if err != nil {
-		fmt.Printf("Error: Bad Key!\n")
+		logs.Debug("Error: Bad Key!\n")
 		os.Exit(0)
 	}
 	return data
@@ -88,6 +91,7 @@ func decodeBase64(b []byte) []byte {
 func (key *AesKey) encrypt(text []byte) []byte {
 	block, err := aes.NewCipher(key.Key)
 	if err != nil {
+		logs.Debug("Error, NewCipher, err:%v\n", err)
 		panic(err)
 	}
 	b := encodeBase64(text)
@@ -106,7 +110,7 @@ func (key *AesKey) decrypt(text []byte) []byte {
 		panic(err)
 	}
 	if len(text) < aes.BlockSize {
-		fmt.Printf("Error!\n")
+		logs.Debug("Error!\n")
 		os.Exit(0)
 	}
 	iv := text[:aes.BlockSize]

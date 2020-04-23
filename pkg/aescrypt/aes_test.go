@@ -1,14 +1,15 @@
 package aescrypt
 
 import (
-	"fmt"
 	"testing"
+
+	"github.com/astaxie/beego/logs"
 )
 
 func TestAes(t *testing.T) {
 
-	key := CreatePrivKey()
-	fmt.Printf("Key: %x\n", *key)
+	key := CreateRandomKey()
+	logs.Debug("Key: %x\n", *key)
 	// GetAesRandomSecrets()
 	// encrypt original file with AES
 	var originalFile, encryptedFile, decryptedFile string

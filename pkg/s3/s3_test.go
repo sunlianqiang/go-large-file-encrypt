@@ -13,11 +13,8 @@ func TestUploadMultipart(t *testing.T) {
 	S3_BUCKET := "agora-finace-backup-test"
 
 	// Upload Files
-	// fileName := "../compress/file1.txt"
-	// fileName := "/Users/slq/Downloads/Microsoft_Remote_Desktop_Beta.app.zip"
-	fileName := "/Users/slq/Downloads/grand-masion-tokyo/Grand-Maison-Tokyo.E11.2019.WEB-DL.1080p.H264.AAC-PTHome.mp4"
-	s3Key := "uploadMultipart.txt"
-	err := UploadMultipart(S3_REGION, S3_BUCKET, fileName, s3Key)
+	s3Key := "../../test/test-little.txt"
+	err := UploadMultipart(S3_REGION, S3_BUCKET, s3Key)
 	if err != nil {
 		log.Fatal(err)
 	}
