@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -20,13 +21,9 @@ type AesKey struct {
 
 // CreateKey
 // create random AES key
-func CreateKey() (key *AesKey) {
+func CreateRandomKey() (key *AesKey) {
 	newkey := []byte(randomStr.GetRandomStr(32))
-	// err := ioutil.WriteFile("aeskey", newkey, 0644)
-	// if err != nil {
-	// 	logs.Debug("Error creating Key file!")
-	// 	os.Exit(0)
-	// }
+
 	aesKey := AesKey{newkey}
 	return &aesKey
 }
@@ -34,7 +31,7 @@ func CreateKey() (key *AesKey) {
 func GetKey(file string) (key *AesKey) {
 	thekey, err := ioutil.ReadFile(file) //Check to see if a key was already created
 	if err != nil {
-		key = CreateKey() //If not, create one
+		key = CreateRandomKey() //If not, create one
 	} else {
 		key = &AesKey{thekey} //If so, set key as the key found in the file
 	}
@@ -57,11 +54,16 @@ func (key *AesKey) EncryptFile(inputfile string, outputfile string) {
 	}
 }
 
-func (key *AesKey) DecryptFile(inputfile string, decryptedFile string) {
+func (key *AesKey) DecryptFile(inputfile string, decryptedFile string) (err error) {
 	if "" == decryptedFile {
 		logs.Debug("decryptedFile can't be empty!")
 	}
 	z, err := ioutil.ReadFile(inputfile)
+	if err != nil {
+		err = fmt.Errorf("Unable to Read decrypted file:%v!, err:%v\n", inputfile, err)
+		logs.Error(err.Error())
+		return
+	}
 	result := key.decrypt(z)
 	//logs.Debug("Decrypted: %s\n", result)
 	logs.Debug("Decrypted file:%v was created with file permissions 0777\n", decryptedFile)
@@ -70,6 +72,7 @@ func (key *AesKey) DecryptFile(inputfile string, decryptedFile string) {
 		logs.Debug("Unable to create decrypted file!, err:%v\n", err)
 		os.Exit(0)
 	}
+	return
 }
 
 func encodeBase64(b []byte) []byte {

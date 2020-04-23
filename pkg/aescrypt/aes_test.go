@@ -8,7 +8,7 @@ import (
 
 func TestAes(t *testing.T) {
 
-	key := CreatePrivKey()
+	key := CreateRandomKey()
 	logs.Debug("Key: %x\n", *key)
 	// GetAesRandomSecrets()
 	// encrypt original file with AES

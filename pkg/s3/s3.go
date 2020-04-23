@@ -40,6 +40,7 @@ func UploadMultipart(s3Region, s3Bucket, uploadFile string) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to open file %q, %v", uploadFile, err)
 	}
+	defer f.Close()
 
 	// Upload the file to S3.
 	s3Key := filepath.Base(uploadFile)
@@ -49,7 +50,9 @@ func UploadMultipart(s3Region, s3Bucket, uploadFile string) (err error) {
 		Body:   f,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to upload file, %v", err)
+		err = fmt.Errorf("failed to upload file, %v", err)
+		logs.Error(err.Error())
+		return
 	}
 	logs.Debug("file uploaded to, %s\n", aws.StringValue(&result.Location))
 	return

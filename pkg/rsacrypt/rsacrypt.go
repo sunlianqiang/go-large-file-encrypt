@@ -16,62 +16,46 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"path/filepath"
 
 	"github.com/astaxie/beego/logs"
-	ssh "github.com/ianmcmahon/encoding_ssh"
-
 	"github.com/sunlianqiang/go-large-file-encrypt/pkg/aescrypt"
+	"github.com/sunlianqiang/go-large-file-encrypt/pkg/gpg"
 )
 
 // Encrypts the infile using the public key and saves the encrypted
 // file as outfile. An error is returned if encryption is unsuccessful.
 // infile and outfile should be a pointer type.
-func Encrypt(keyStrMap *map[int]string, infile string, outfile string, outkeyFileArr *[]string) (err error) {
+func Encrypt(pubKeys []string, infile string, outfile string, outkeyFileArr *[]string) (err error) {
 	logs.Info("---------- ENCRYPT START ----------")
 	defer logs.Info("---------- ENCRYPT END ----------")
 	// create random secrets in file
-	aesKey := aescrypt.CreateKey()
+	aesKey := aescrypt.CreateRandomKey()
 	logs.Debug("Success, CreateKey AES Key\n")
 	// GetAesRandomSecrets()
 	// encrypt original file with AES
 	aesKey.EncryptFile(infile, outfile)
 
-	cipherkeyArr := [][]byte{}
-	for k, keybytes := range *keyStrMap {
-
-		// decode string ssh-rsa format to native type
-		pubkey, err := ssh.DecodePublicKey(keybytes)
-		if err != nil {
-			logs.Error("Unable to decode public key. err:%s", err)
-			delete(*keyStrMap, k)
+	for k, pubKey := range pubKeys {
+		// EncryptPGP(msg2Enc, pubkeyFile, outfile)
+		outkeyFile := fmt.Sprintf("aeskey-%v-%v.enc", filepath.Base(pubKey), k)
+		err = gpg.EncryptPGP(string(aesKey.Key), pubKey, outkeyFile)
+		if nil != err {
+			fmt.Printf("EncryptPGP err:%v\n", err)
 			continue
 		}
 
-		// encrypt key with rsa publick key
-		cipherkey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, pubkey.(*rsa.PublicKey), aesKey.Key, []byte(""))
-		if err != nil {
-			logs.Debug("Unable to encrypt key. %s", err)
-			delete(*keyStrMap, k)
-			continue
-		}
-
-		cipherkeyArr = append(cipherkeyArr, cipherkey)
-
+		*outkeyFileArr = append(*outkeyFileArr, outkeyFile)
 	}
 
-	for k, v := range cipherkeyArr {
-		outkeyFile := fmt.Sprintf("%v.aeskey-%v.enc", outfile, k)
-		*outkeyFileArr = append(*outkeyFileArr, outkeyFile)
-		// write key to output file
-		//outkeyfile := "c:/temp/" + filepath.Base(infile) + ".key.enc"
-		err = ioutil.WriteFile(outkeyFile, v, 0600)
-		if err != nil {
-			logs.Debug("Unable to write to output file. %s", err)
-			continue
-		}
+	if 0 == len(*outkeyFileArr) {
+		errStr := fmt.Sprintf("Fail, no valid public key\n")
+		logs.Error(errStr)
+		return
 	}
 
 	return
+
 }
 
 // Decrypts the infile using the private key keyfile and saves the decrypted
@@ -106,23 +90,6 @@ func Decrypt(keybytes []byte, infile string, inkeyfile string, outfile string) e
 
 	aesKey := &aescrypt.AesKey{inkey}
 	aesKey.DecryptFile(infile, outfile)
-	// // read the encrypted input file
-	// infilebytes, err := ioutil.ReadFile(infile)
-	// if err != nil {
-	// 	return fmt.Errorf("Unable to read input file. %s", err)
-	// }
-
-	// // decrypt
-	// decipher, err := decrypt(infilebytes, inkey)
-	// if err != nil {
-	// 	return fmt.Errorf("Unable to decrypt. %s", err)
-	// }
-
-	// // write to output file
-	// err = ioutil.WriteFile(outfile, decipher, 0600)
-	// if err != nil {
-	// 	return fmt.Errorf("Unable to write to output file. %s", err)
-	// }
 
 	return err
 }
